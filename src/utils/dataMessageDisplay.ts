@@ -186,6 +186,30 @@ function componentParameters(components: unknown[], type: string): unknown[] {
   return component.parameters;
 }
 
+/**
+ * API inserts often use Meta's `components[]` shape; OpenBSP docs also show a
+ * flat `parameters[]` on `data` (see MIGRATING_FROM_TWILIO). Treat those as
+ * body variables when no component parameters are present.
+ */
+function templateParameterLists(data: Record<string, unknown>): {
+  headerParams: unknown[];
+  bodyParams: unknown[];
+} {
+  const components = Array.isArray(data.components) ? data.components : [];
+  const headerParams = componentParameters(components, "header");
+  let bodyParams = componentParameters(components, "body");
+
+  if (
+    !bodyParams.length &&
+    !headerParams.length &&
+    Array.isArray(data.parameters)
+  ) {
+    bodyParams = data.parameters;
+  }
+
+  return { headerParams, bodyParams };
+}
+
 function definitionComponent(
   definition: TemplateData,
   type: string,
@@ -271,9 +295,7 @@ function templateDisplay(
   text: string | undefined,
   definition: TemplateData | undefined,
 ): DataMessageDisplay {
-  const components = Array.isArray(data.components) ? data.components : [];
-  const headerParams = componentParameters(components, "header");
-  const bodyParams = componentParameters(components, "body");
+  const { headerParams, bodyParams } = templateParameterLists(data);
   const paramValues = [
     ...headerParams.map(parameterText),
     ...bodyParams.map(parameterText),
