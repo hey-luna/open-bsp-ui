@@ -80,6 +80,7 @@ export function useTemplates(organizationAddress?: string) {
       return templatesFromInvoke(data);
     },
     enabled: !!activeOrgId && !!organizationAddress,
+    staleTime: 5 * 60 * 1000,
   });
 }
 
