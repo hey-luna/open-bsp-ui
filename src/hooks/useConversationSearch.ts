@@ -9,6 +9,18 @@ const SEARCH_LIMIT = 50;
 const PREVIEW_FETCH_CAP = 30;
 const DEBOUNCE_MS = 250;
 
+async function safeSelect<T>(
+  fn: () => PromiseLike<{ data: T[] | null }>,
+): Promise<T[]> {
+  try {
+    const { data } = await fn();
+    return data ?? [];
+  } catch (err) {
+    console.error(err);
+    return [];
+  }
+}
+
 /**
  * When the user searches the chat list, hydrate matching conversations that
  * are not in the current init_data window (name / phone / contact name).
@@ -33,52 +45,65 @@ export function useConversationSearch(pattern: string) {
       try {
         const convsById = new Map<string, ConversationRow>();
 
-        const orFilters: string[] = [];
-        if (term) orFilters.push(`name.ilike.%${term}%`);
-        if (digits.length >= 3) {
-          orFilters.push(`contact_address.ilike.%${digits}%`);
-        }
-
-        if (orFilters.length) {
-          const { data } = await supabase
+        const convRows = await safeSelect(async () => {
+          let req = supabase
             .from("conversations")
             .select()
-            .eq("organization_id", orgId!)
-            .or(orFilters.join(","))
-            .limit(SEARCH_LIMIT)
-            .throwOnError();
-          for (const conv of data ?? []) convsById.set(conv.id, conv);
-        }
+            .eq("organization_id", orgId!);
+          if (term && digits.length >= 3) {
+            req = req.or(
+              `name.ilike.%${term}%,contact_address.ilike.%${digits}%`,
+            );
+          } else if (term) {
+            req = req.ilike("name", `%${term}%`);
+          } else {
+            req = req.ilike("contact_address", `%${digits}%`);
+          }
+          return req.limit(SEARCH_LIMIT).throwOnError();
+        });
+        for (const conv of convRows) convsById.set(conv.id, conv);
 
         if (term) {
-          const [{ data: namedContacts }, { data: namedAddresses }] =
+          const [namedContacts, namedByExtra, namedByUsername] =
             await Promise.all([
-              supabase
-                .from("contacts")
-                .select("id, addresses:contacts_addresses(address)")
-                .eq("organization_id", orgId!)
-                .ilike("name", `%${term}%`)
-                .limit(SEARCH_LIMIT)
-                .throwOnError(),
-              supabase
-                .from("contacts_addresses")
-                .select("address")
-                .eq("organization_id", orgId!)
-                .or(
-                  `extra->>name.ilike.%${term}%,extra->>username.ilike.%${term}%`,
-                )
-                .limit(SEARCH_LIMIT)
-                .throwOnError(),
+              safeSelect(async () =>
+                supabase
+                  .from("contacts")
+                  .select("id, addresses:contacts_addresses(address)")
+                  .eq("organization_id", orgId!)
+                  .ilike("name", `%${term}%`)
+                  .limit(SEARCH_LIMIT)
+                  .throwOnError(),
+              ),
+              safeSelect(async () =>
+                supabase
+                  .from("contacts_addresses")
+                  .select("address")
+                  .eq("organization_id", orgId!)
+                  .filter("extra->>name", "ilike", `%${term}%`)
+                  .limit(SEARCH_LIMIT)
+                  .throwOnError(),
+              ),
+              safeSelect(async () =>
+                supabase
+                  .from("contacts_addresses")
+                  .select("address")
+                  .eq("organization_id", orgId!)
+                  .filter("extra->>username", "ilike", `%${term}%`)
+                  .limit(SEARCH_LIMIT)
+                  .throwOnError(),
+              ),
             ]);
 
           const addresses = [
-            ...(namedContacts ?? []).flatMap(
+            ...namedContacts.flatMap(
               (contact) =>
                 contact.addresses
                   ?.map((addr) => addr.address)
                   .filter(Boolean) ?? [],
             ),
-            ...(namedAddresses ?? []).map((addr) => addr.address),
+            ...namedByExtra.map((addr) => addr.address),
+            ...namedByUsername.map((addr) => addr.address),
           ].filter((address): address is string => Boolean(address));
 
           const uniqueAddresses = [...new Set(addresses)].slice(
@@ -86,14 +111,16 @@ export function useConversationSearch(pattern: string) {
             SEARCH_LIMIT,
           );
           if (uniqueAddresses.length) {
-            const { data } = await supabase
-              .from("conversations")
-              .select()
-              .eq("organization_id", orgId!)
-              .in("contact_address", uniqueAddresses)
-              .limit(SEARCH_LIMIT)
-              .throwOnError();
-            for (const conv of data ?? []) convsById.set(conv.id, conv);
+            const extraConvs = await safeSelect(async () =>
+              supabase
+                .from("conversations")
+                .select()
+                .eq("organization_id", orgId!)
+                .in("contact_address", uniqueAddresses)
+                .limit(SEARCH_LIMIT)
+                .throwOnError(),
+            );
+            for (const conv of extraConvs) convsById.set(conv.id, conv);
           }
         }
 

@@ -28,6 +28,8 @@ export const queryKeys = {
       service: NullableId,
       address: NullableId,
     ) => [orgId, "contacts_addresses", service, address] as const,
+    conversationSearchIndex: (orgId: NullableId, addresses: string[]) =>
+      [orgId, "contacts_addresses", "conversation-search", addresses] as const,
   },
   organizations: {
     all: () => ["organizations"] as const,
