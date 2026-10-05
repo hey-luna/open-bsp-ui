@@ -2,13 +2,15 @@ import { useMemo } from "react";
 import useBoundStore from "@/stores/useBoundStore";
 import ChatListItem from "./ChatListItem";
 import { type ConversationRow, type MessageRow } from "@/supabase/client";
-import type { ContactAddressExtra } from "@/supabase/client";
 import { timestampDescending } from "@/stores/chatSlice";
 import { filters, Filters } from "@/stores/uiSlice";
 import { useTranslation } from "@/hooks/useTranslation";
 import { useConversationListScroll } from "@/hooks/useConversationListScroll";
 import { useConversationSearch } from "@/hooks/useConversationSearch";
-import { useContacts } from "@/queries/useContacts";
+import {
+  lookupConversationContact,
+  useConversationContactIndex,
+} from "@/hooks/useConversationContactIndex";
 import { conversationMatchesSearch } from "@/utils/conversationSearch";
 import Spinner from "./Spinner";
 
@@ -46,83 +48,67 @@ const ChatList = () => {
   const conversationAliases = useBoundStore(
     (state) => state.ui.conversationAliases || {},
   );
-  const { data: contacts } = useContacts();
   const isSearching = Boolean(searchPattern.trim());
 
   useConversationSearch(searchPattern);
-
-  const contactIndex = useMemo(() => {
-    const map = new Map<
-      string,
-      { name?: string; extraName?: string; username?: string }
-    >();
-
-    for (const contact of contacts ?? []) {
-      for (const addr of contact.addresses ?? []) {
-        const extra = addr.extra as ContactAddressExtra | null;
-        const key = `${addr.service}:${addr.address}`;
-        const prev = map.get(key);
-        map.set(key, {
-          name: contact.name || prev?.name,
-          extraName: extra?.name || prev?.extraName,
-          username:
-            extra && "username" in extra && extra.username
-              ? extra.username
-              : prev?.username,
-        });
-      }
-    }
-
-    return map;
-  }, [contacts]);
+  const contactIndex = useConversationContactIndex(activeOrgId, conversations);
 
   function getMostRecentMsg(convId: string): MessageRow | undefined {
     return messages.get(convId)?.values().next().value;
   }
 
-  let items: ConvMetadata[] = [...conversations]
-    /*.filter(
-      ([, conv]) =>
-        role === "admin" || conv.service !== "local",
-    )*/
-    .map(([convId, conv]) => ({
-      convId,
-      conv,
-      alias: conversationAliases[convId],
-      mostRecentMsg: getMostRecentMsg(convId),
-    }))
-    .filter(
-      (a) =>
-        a.conv.organization_id === activeOrgId &&
-        filters[filterName](a.conv, a.mostRecentMsg) &&
-        !!a.mostRecentMsg,
-    );
-
-  if (isSearching) {
-    items = items.filter((item) => {
-      const info = item.conv.contact_address
-        ? contactIndex.get(`${item.conv.service}:${item.conv.contact_address}`)
-        : undefined;
-      return conversationMatchesSearch(
-        {
-          alias: item.alias,
-          name: item.conv.name,
-          contactName: info?.name,
-          extraName: info?.extraName,
-          username: info?.username,
-          contactAddress: item.conv.contact_address,
-          groupAddress: item.conv.group_address,
-        },
-        searchPattern,
+  const items = useMemo(() => {
+    let next: ConvMetadata[] = [...conversations]
+      .map(([convId, conv]) => ({
+        convId,
+        conv,
+        alias: conversationAliases[convId],
+        mostRecentMsg: getMostRecentMsg(convId),
+      }))
+      .filter(
+        (a) =>
+          a.conv.organization_id === activeOrgId &&
+          filters[filterName](a.conv, a.mostRecentMsg) &&
+          !!a.mostRecentMsg,
       );
-    });
-  } else {
-    items.sort(
-      (a, b) =>
-        pinnedAscending(a.conv, b.conv) ||
-        timestampDescending(a.mostRecentMsg, b.mostRecentMsg),
-    );
-  }
+
+    if (isSearching) {
+      next = next.filter((item) => {
+        const info = lookupConversationContact(contactIndex, item.conv);
+        return conversationMatchesSearch(
+          {
+            alias: item.alias,
+            name: item.conv.name,
+            contactName: info?.name,
+            extraName: info?.extraName,
+            username: info?.username,
+            contactAddress: item.conv.contact_address,
+            groupAddress: item.conv.group_address,
+          },
+          searchPattern,
+        );
+      });
+    } else {
+      next.sort(
+        (a, b) =>
+          pinnedAscending(a.conv, b.conv) ||
+          timestampDescending(a.mostRecentMsg, b.mostRecentMsg),
+      );
+    }
+
+    return next;
+    // getMostRecentMsg reads `messages`; include it via messages in deps.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    activeOrgId,
+    contactIndex,
+    conversationAliases,
+    conversations,
+    filterName,
+    isSearching,
+    messages,
+    searchPattern,
+  ]);
 
   const itemIds = items.map((a) => a.convId);
 
