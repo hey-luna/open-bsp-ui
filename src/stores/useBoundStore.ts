@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import { type ChatSlice, createChatSlice } from "./chatSlice";
-import { type UISlice, createUISlice } from "./uiSlice";
+import { type UISlice, createUISlice, Filters, filters } from "./uiSlice";
 import { loadTranslations } from "@/i18n/translations";
 
 export type AppState = {
@@ -42,6 +42,10 @@ const useBoundStore = create<AppState>()(
             ...state.ui,
             conversationAliases: state.ui.conversationAliases || {},
           };
+          // Migrate removed filter tabs (todas / pendientes / 24h / archivadas)
+          if (!(state.ui.filter in filters)) {
+            state.ui.filter = Filters.OPEN_WINDOW;
+          }
           if (state.ui.language && state.ui.language !== "es") {
             loadTranslations(state.ui.language);
           }

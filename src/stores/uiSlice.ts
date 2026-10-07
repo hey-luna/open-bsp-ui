@@ -14,25 +14,35 @@ export function isArchived(conv: ConversationRow, msg?: MessageRow) {
   return +new Date(archivedTimestamp || 0) > +new Date(msg?.timestamp || 0);
 }
 
+/** True when the contact's last incoming message is still within the 24h CS window. */
+export function isCustomerServiceWindowOpen(
+  mostRecentIncoming?: MessageRow | null,
+  now: dayjs.Dayjs = dayjs(),
+) {
+  return now.isBefore(dayjs(mostRecentIncoming?.timestamp || 0).add(1, "day"));
+}
+
 export const Filters = {
-  ALL: "todas",
-  UNREAD: "pendientes",
-  H24: "24h",
-  ARCHIVED: "archivadas",
+  OPEN_WINDOW: "en ventana",
+  CLOSED_WINDOW: "ventana cerrada",
 } as const;
 
 export type Filters = (typeof Filters)[keyof typeof Filters];
 
 export const filters: {
-  [key in Filters]: (conv: ConversationRow, msg?: MessageRow) => boolean;
+  [key in Filters]: (
+    conv: ConversationRow,
+    msg?: MessageRow,
+    mostRecentIncoming?: MessageRow,
+    now?: dayjs.Dayjs,
+  ) => boolean;
 } = {
-  todas: (conv, msg) => !isArchived(conv, msg),
-  pendientes: (conv, msg) =>
-    !isArchived(conv, msg) && msg?.direction === "incoming",
-  "24h": (conv, msg) =>
+  "en ventana": (conv, msg, mostRecentIncoming, now) =>
     !isArchived(conv, msg) &&
-    dayjs(msg?.timestamp || 0).isAfter(dayjs().subtract(1, "day")),
-  archivadas: (conv, msg) => isArchived(conv, msg),
+    isCustomerServiceWindowOpen(mostRecentIncoming, now),
+  "ventana cerrada": (conv, msg, mostRecentIncoming, now) =>
+    !isArchived(conv, msg) &&
+    !isCustomerServiceWindowOpen(mostRecentIncoming, now),
 } as const;
 
 export type TemplateDraft = {
@@ -105,7 +115,7 @@ export const createUISlice: StateCreator<Partial<AppState>> = (
   activeConvId: null,
   user: null,
   sendAsContact: false,
-  filter: "todas" as keyof typeof filters,
+  filter: Filters.OPEN_WINDOW as keyof typeof filters,
   searchPattern: "",
   isLoading: false,
   language: detectDefaultLanguage(),
