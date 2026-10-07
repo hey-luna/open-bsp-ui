@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useContext, useMemo } from "react";
 import useBoundStore from "@/stores/useBoundStore";
 import ChatListItem from "./ChatListItem";
 import { type ConversationRow, type MessageRow } from "@/supabase/client";
@@ -12,6 +12,7 @@ import {
   useConversationContactIndex,
 } from "@/hooks/useConversationContactIndex";
 import { conversationMatchesSearch } from "@/utils/conversationSearch";
+import { TickContext } from "@/contexts/useTick";
 import Spinner from "./Spinner";
 
 export type ConvMetadata = {
@@ -19,6 +20,7 @@ export type ConvMetadata = {
   conv: ConversationRow;
   alias?: string;
   mostRecentMsg?: MessageRow;
+  mostRecentIncoming?: MessageRow;
 };
 
 function pinnedAscending(a: ConversationRow, b: ConversationRow) {
@@ -38,6 +40,7 @@ function pinnedAscending(a: ConversationRow, b: ConversationRow) {
 
 const ChatList = () => {
   const { translate: t } = useTranslation();
+  const tick = useContext(TickContext);
   const activeOrgId = useBoundStore((state) => state.ui.activeOrgId);
   const conversations = useBoundStore((state) => state.chat.conversations);
   const messages = useBoundStore((state) => state.chat.messages);
@@ -49,12 +52,22 @@ const ChatList = () => {
     (state) => state.ui.conversationAliases || {},
   );
   const isSearching = Boolean(searchPattern.trim());
+  const appliedFilter =
+    filterName in filters ? filterName : Filters.OPEN_WINDOW;
 
   useConversationSearch(searchPattern);
   const contactIndex = useConversationContactIndex(activeOrgId, conversations);
 
   function getMostRecentMsg(convId: string): MessageRow | undefined {
     return messages.get(convId)?.values().next().value;
+  }
+
+  function getMostRecentIncoming(convId: string): MessageRow | undefined {
+    const msgs = messages.get(convId)?.values();
+    if (!msgs) return;
+    for (const msg of msgs) {
+      if (msg.direction === "incoming") return msg;
+    }
   }
 
   const items = useMemo(() => {
@@ -64,11 +77,17 @@ const ChatList = () => {
         conv,
         alias: conversationAliases[convId],
         mostRecentMsg: getMostRecentMsg(convId),
+        mostRecentIncoming: getMostRecentIncoming(convId),
       }))
       .filter(
         (a) =>
           a.conv.organization_id === activeOrgId &&
-          filters[filterName](a.conv, a.mostRecentMsg) &&
+          filters[appliedFilter](
+            a.conv,
+            a.mostRecentMsg,
+            a.mostRecentIncoming,
+            tick,
+          ) &&
           !!a.mostRecentMsg,
       );
 
@@ -97,17 +116,18 @@ const ChatList = () => {
     }
 
     return next;
-    // getMostRecentMsg reads `messages`; include it via messages in deps.
+    // getMostRecentMsg / getMostRecentIncoming read `messages`; include via messages in deps.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     activeOrgId,
+    appliedFilter,
     contactIndex,
     conversationAliases,
     conversations,
-    filterName,
     isSearching,
     messages,
     searchPattern,
+    tick,
   ]);
 
   const itemIds = items.map((a) => a.convId);
@@ -137,12 +157,12 @@ const ChatList = () => {
       ) : (
         <div className="h-full flex items-center justify-center flex-col text-foreground text-[15px] mt-[-24px]">
           {t("Nada por aquí")}
-          {(searchPattern || filterName !== Filters.ALL) && (
+          {(searchPattern || appliedFilter !== Filters.OPEN_WINDOW) && (
             <button
               className="text-[13px] text-primary"
               onClick={() => {
                 setSearchPattern("");
-                setFilterName(Filters.ALL);
+                setFilterName(Filters.OPEN_WINDOW);
               }}
             >
               {t("remover filtros...")}
