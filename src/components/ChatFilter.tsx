@@ -11,6 +11,7 @@ export default function ChatFilter() {
   const activeOrgId = useBoundStore((state) => state.ui.activeOrgId);
   const conversations = useBoundStore((state) => state.chat.conversations);
   const messages = useBoundStore((state) => state.chat.messages);
+  const lastIncomingAt = useBoundStore((state) => state.chat.lastIncomingAt);
   const tick = useContext(TickContext);
 
   const { translate: t } = useTranslation();
@@ -29,31 +30,25 @@ export default function ChatFilter() {
     for (const [convId, conv] of conversations) {
       if (conv.organization_id !== activeOrgId) continue;
 
-      const convMessages = messages.get(convId);
-      const mostRecentMsg: MessageRow | undefined = convMessages
+      const mostRecentMsg: MessageRow | undefined = messages
+        .get(convId)
         ?.values()
         .next().value;
       if (!mostRecentMsg) continue;
 
-      let mostRecentIncoming: MessageRow | undefined;
-      if (convMessages) {
-        for (const msg of convMessages.values()) {
-          if (msg.direction === "incoming") {
-            mostRecentIncoming = msg;
-            break;
-          }
-        }
-      }
+      const incomingAt = lastIncomingAt.has(convId)
+        ? lastIncomingAt.get(convId)
+        : undefined;
 
       for (const filter of Object.keys(filters) as Filters[]) {
-        if (filters[filter](conv, mostRecentMsg, mostRecentIncoming, tick)) {
+        if (filters[filter](conv, mostRecentMsg, incomingAt, tick)) {
           next[filter]++;
         }
       }
     }
 
     return next;
-  }, [activeOrgId, conversations, messages, tick]);
+  }, [activeOrgId, conversations, lastIncomingAt, messages, tick]);
 
   return (
     <div className="px-[20px] pb-[5px] flex gap-3 w-full overflow-x-auto scrollbar-hide shrink-0">

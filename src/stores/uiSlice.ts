@@ -14,12 +14,29 @@ export function isArchived(conv: ConversationRow, msg?: MessageRow) {
   return +new Date(archivedTimestamp || 0) > +new Date(msg?.timestamp || 0);
 }
 
-/** True when the contact's last incoming message is still within the 24h CS window. */
+/**
+ * True when the contact's last incoming message is still within the 24h CS
+ * window. `lastIncomingAt` is the newest known non-reaction incoming timestamp:
+ * - `string` — known incoming at that time
+ * - `null` — confirmed no incoming exists
+ * - `undefined` — not hydrated yet; if the latest list preview is still within
+ *   24h we treat the window as open so chats don't sit in "closed" and then
+ *   jump to "open" once history loads
+ */
 export function isCustomerServiceWindowOpen(
-  mostRecentIncoming?: MessageRow | null,
+  lastIncomingAt?: string | null,
+  mostRecentMsg?: MessageRow | null,
   now: dayjs.Dayjs = dayjs(),
 ) {
-  return now.isBefore(dayjs(mostRecentIncoming?.timestamp || 0).add(1, "day"));
+  if (typeof lastIncomingAt === "string") {
+    return now.isBefore(dayjs(lastIncomingAt).add(1, "day"));
+  }
+  if (lastIncomingAt === null) {
+    return false;
+  }
+  // Unknown: only treat as closed when even the latest activity is outside 24h.
+  if (!mostRecentMsg) return false;
+  return now.isBefore(dayjs(mostRecentMsg.timestamp).add(1, "day"));
 }
 
 export const Filters = {
@@ -33,16 +50,16 @@ export const filters: {
   [key in Filters]: (
     conv: ConversationRow,
     msg?: MessageRow,
-    mostRecentIncoming?: MessageRow,
+    lastIncomingAt?: string | null,
     now?: dayjs.Dayjs,
   ) => boolean;
 } = {
-  "en ventana": (conv, msg, mostRecentIncoming, now) =>
+  "en ventana": (conv, msg, lastIncomingAt, now) =>
     !isArchived(conv, msg) &&
-    isCustomerServiceWindowOpen(mostRecentIncoming, now),
-  "ventana cerrada": (conv, msg, mostRecentIncoming, now) =>
+    isCustomerServiceWindowOpen(lastIncomingAt, msg, now),
+  "ventana cerrada": (conv, msg, lastIncomingAt, now) =>
     !isArchived(conv, msg) &&
-    !isCustomerServiceWindowOpen(mostRecentIncoming, now),
+    !isCustomerServiceWindowOpen(lastIncomingAt, msg, now),
 } as const;
 
 export type TemplateDraft = {

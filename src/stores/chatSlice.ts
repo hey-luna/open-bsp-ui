@@ -10,6 +10,7 @@ import {
   toHistoryCursor,
   type MessageHistoryCursor,
 } from "@/utils/messageHistory";
+import { isReactionMessage } from "@/utils/ReactionUtils";
 
 export {
   isOlderThanCursor,
@@ -39,6 +40,12 @@ export type ChatState = {
   /** Per-conversation reply target (message id). Cleared on send/cancel. */
   replyToIds: Map<string, string>;
   mediaLoads: Map<string, MediaLoad>;
+  /**
+   * Newest non-reaction incoming timestamp per conversation. Survives message
+   * trims so open/closed window filters stay stable when a chat is opened.
+   * `null` means confirmed "never received an incoming message".
+   */
+  lastIncomingAt: Map<string, string | null>;
 };
 
 export type ChatActions = {
@@ -61,6 +68,14 @@ export type ChatActions = {
     conversationId: string,
     limit: number,
   ) => MessageHistoryCursor | null;
+  /**
+   * Record the newest known incoming timestamp (or `null` if none exists).
+   * Never downgrades a known timestamp to an older one or to `null`.
+   */
+  rememberLastIncomingAt: (
+    conversationId: string,
+    timestamp: string | null,
+  ) => void;
   setMediaLoad: (messageId: string, mediaLoad: MediaLoad) => void;
   setConversationTextDraft: (convId: string, textDraft: string) => void;
   setConversationFileDrafts: (convId: string, drafts: FileDraft[]) => void;
@@ -90,6 +105,7 @@ export const createChatSlice: StateCreator<Partial<AppState>> = (
   fileDrafts: new Map(),
   replyToIds: new Map(),
   mediaLoads: new Map(),
+  lastIncomingAt: new Map(),
   pushConversations: (convs: ConversationRow[]) =>
     set((state) => {
       const conversations = new Map(state.chat.conversations);
@@ -124,6 +140,7 @@ export const createChatSlice: StateCreator<Partial<AppState>> = (
         .filter(Boolean) as MessageRow[];
 
       const messages = new Map(state.chat.messages);
+      const lastIncomingAt = new Map(state.chat.lastIncomingAt);
 
       const msgsByConv: { [key: string]: MessageRow[] } = groupBy(
         msgs.filter((m) => m.timestamp <= m.updated_at), // do not display scheduled messages (timestamp in the future)
@@ -146,6 +163,13 @@ export const createChatSlice: StateCreator<Partial<AppState>> = (
           }
 
           messagesByConv.set(msg.id, msg);
+
+          if (msg.direction === "incoming" && !isReactionMessage(msg)) {
+            const prev = lastIncomingAt.get(convId);
+            if (prev == null || msg.timestamp > prev) {
+              lastIncomingAt.set(convId, msg.timestamp);
+            }
+          }
         }
 
         /* PART B: Sorting (most recent first) */
@@ -162,6 +186,26 @@ export const createChatSlice: StateCreator<Partial<AppState>> = (
         chat: {
           ...state.chat,
           messages,
+          lastIncomingAt,
+        },
+      };
+    }),
+  rememberLastIncomingAt: (conversationId: string, timestamp: string | null) =>
+    set((state) => {
+      const prev = state.chat.lastIncomingAt.get(conversationId);
+      // Never erase a known incoming timestamp with "none" or an older value.
+      if (timestamp === null) {
+        if (prev !== undefined) return {};
+      } else if (typeof prev === "string" && !(timestamp > prev)) {
+        return {};
+      }
+
+      const lastIncomingAt = new Map(state.chat.lastIncomingAt);
+      lastIncomingAt.set(conversationId, timestamp);
+      return {
+        chat: {
+          ...state.chat,
+          lastIncomingAt,
         },
       };
     }),
