@@ -128,10 +128,13 @@ const ChatList = () => {
 
   const itemIds = items.map((a) => a.convId);
 
-  const { scrollerRef, isLoadingOlder, onScroll } = useConversationListScroll(
-    itemIds.length,
-    { enabled: !isSearching },
-  );
+  const { scrollerRef, isLoadingOlder, onScroll, hasMore } =
+    useConversationListScroll(itemIds.length, {
+      enabled: !isSearching,
+      fillKey: appliedFilter,
+    });
+
+  const showLoadingEmpty = !itemIds.length && (isLoadingOlder || hasMore);
 
   return (
     <div
@@ -149,6 +152,10 @@ const ChatList = () => {
               <Spinner size={16} />
             </div>
           )}
+        </div>
+      ) : showLoadingEmpty ? (
+        <div className="h-full flex items-center justify-center">
+          <Spinner size={20} />
         </div>
       ) : (
         <div className="h-full flex items-center justify-center flex-col text-foreground text-[15px] mt-[-24px]">
