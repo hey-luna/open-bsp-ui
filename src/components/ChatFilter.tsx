@@ -1,5 +1,10 @@
 import useBoundStore from "@/stores/useBoundStore";
-import { filters, Filters, ClosedListSort } from "@/stores/uiSlice";
+import {
+  filters,
+  Filters,
+  ClosedListSort,
+  isClosedFilter,
+} from "@/stores/uiSlice";
 import { useTranslation } from "@/hooks/useTranslation";
 import { useWindowFilterCounts } from "@/hooks/useWindowFilterCounts";
 import { ArrowDownUp } from "lucide-react";
@@ -17,10 +22,11 @@ export default function ChatFilter() {
 
   const filterNames: { [key in Filters]: string } = {
     "en ventana": t("en ventana"),
+    "cerrada 2d": t("cerrada 2d"),
     "ventana cerrada": t("ventana cerrada"),
   };
 
-  const showClosedSort = appliedFilter === Filters.CLOSED_WINDOW;
+  const showClosedSort = isClosedFilter(appliedFilter);
 
   return (
     <div className="px-[20px] pb-[5px] flex gap-3 w-full items-center overflow-x-auto scrollbar-hide shrink-0">

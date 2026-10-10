@@ -7,6 +7,10 @@ import type {
   MessageRow,
   TemplateData,
 } from "@/supabase/client";
+import {
+  isClosedAtMostDays,
+  RECENTLY_CLOSED_MAX_DAYS,
+} from "@/utils/closedWindow";
 
 export function isArchived(conv: ConversationRow, msg?: MessageRow) {
   const archivedTimestamp: string | null | undefined = conv.extra?.archived;
@@ -41,12 +45,15 @@ export function isCustomerServiceWindowOpen(
 
 export const Filters = {
   OPEN_WINDOW: "en ventana",
+  /** Window closed, but for at most 2 days. */
+  RECENTLY_CLOSED: "cerrada 2d",
+  /** Window closed for more than 2 days (or never received a message). */
   CLOSED_WINDOW: "ventana cerrada",
 } as const;
 
 export type Filters = (typeof Filters)[keyof typeof Filters];
 
-/** Sort mode used on the closed-window conversation tab. */
+/** Sort mode used on closed-window conversation tabs. */
 export const ClosedListSort = {
   RECENT: "recent",
   LONGEST_CLOSED: "closed_longest",
@@ -54,6 +61,10 @@ export const ClosedListSort = {
 
 export type ClosedListSort =
   (typeof ClosedListSort)[keyof typeof ClosedListSort];
+
+export function isClosedFilter(filter: Filters): boolean {
+  return filter === Filters.RECENTLY_CLOSED || filter === Filters.CLOSED_WINDOW;
+}
 
 export const filters: {
   [key in Filters]: (
@@ -66,9 +77,14 @@ export const filters: {
   "en ventana": (conv, msg, lastIncomingAt, now) =>
     !isArchived(conv, msg) &&
     isCustomerServiceWindowOpen(lastIncomingAt, msg, now),
-  "ventana cerrada": (conv, msg, lastIncomingAt, now) =>
+  "cerrada 2d": (conv, msg, lastIncomingAt, now = dayjs()) =>
     !isArchived(conv, msg) &&
-    !isCustomerServiceWindowOpen(lastIncomingAt, msg, now),
+    !isCustomerServiceWindowOpen(lastIncomingAt, msg, now) &&
+    isClosedAtMostDays(lastIncomingAt, RECENTLY_CLOSED_MAX_DAYS, now),
+  "ventana cerrada": (conv, msg, lastIncomingAt, now = dayjs()) =>
+    !isArchived(conv, msg) &&
+    !isCustomerServiceWindowOpen(lastIncomingAt, msg, now) &&
+    !isClosedAtMostDays(lastIncomingAt, RECENTLY_CLOSED_MAX_DAYS, now),
 } as const;
 
 export type TemplateDraft = {

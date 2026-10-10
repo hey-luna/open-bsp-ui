@@ -3,7 +3,12 @@ import useBoundStore from "@/stores/useBoundStore";
 import ChatListItem from "./ChatListItem";
 import { type ConversationRow, type MessageRow } from "@/supabase/client";
 import { timestampDescending } from "@/stores/chatSlice";
-import { ClosedListSort, filters, Filters } from "@/stores/uiSlice";
+import {
+  ClosedListSort,
+  filters,
+  Filters,
+  isClosedFilter,
+} from "@/stores/uiSlice";
 import { useTranslation } from "@/hooks/useTranslation";
 import { useConversationListScroll } from "@/hooks/useConversationListScroll";
 import { useConversationSearch } from "@/hooks/useConversationSearch";
@@ -106,7 +111,7 @@ const ChatList = () => {
         );
       });
     } else if (
-      appliedFilter === Filters.CLOSED_WINDOW &&
+      isClosedFilter(appliedFilter) &&
       closedListSort === ClosedListSort.LONGEST_CLOSED
     ) {
       next.sort((a, b) => {
