@@ -11,23 +11,34 @@ const PAGE_LIMIT = 100;
 const PER_CONVERSATION = 5;
 const SCROLL_BOTTOM_THRESHOLD_PX = 120;
 
+function waitFrame(): Promise<void> {
+  return new Promise((resolve) => requestAnimationFrame(() => resolve()));
+}
+
 /**
- * Loads older conversations when the user scrolls the chat list toward the
- * bottom. Also keeps paging automatically while the filtered list is too short
- * to scroll (e.g. few "ventana cerrada" hits in the first init_data window).
+ * Loads older conversations for the chat list.
+ *
+ * init_data is chronological and shared across filter tabs, so a full "open"
+ * viewport used to stop paging and leave "closed" chats unloaded. We keep
+ * fetching while the active filter still has fewer items than its org-wide
+ * total (or the list is short / near the bottom).
  */
 export function useConversationListScroll(
   itemCount: number,
   options?: {
     enabled?: boolean;
-    /** Re-pump when the active filter changes */ fillKey?: string;
+    /** Active filter key — re-evaluate fill when the tab changes */
+    fillKey?: string;
+    /** Org-wide total for the active filter; load until we reach it */
+    targetCount?: number;
   },
 ) {
   const enabled = options?.enabled ?? true;
   const fillKey = options?.fillKey ?? "";
+  const targetCount = options?.targetCount ?? 0;
   const scrollerRef = useRef<HTMLDivElement>(null);
   const activeOrgId = useBoundStore((s) => s.ui.activeOrgId);
-  // Re-run the fill pump once init_data has seeded at least one preview.
+
   const previewReady = useBoundStore((s) => {
     if (!activeOrgId) return false;
     for (const [convId, conv] of s.chat.conversations) {
@@ -36,8 +47,22 @@ export function useConversationListScroll(
     }
     return false;
   });
+
+  // Advances after every merged page so the fill effect continues even when
+  // the new page adds zero rows for the active filter.
+  const loadedConvCount = useBoundStore((s) => {
+    if (!activeOrgId) return 0;
+    let n = 0;
+    for (const [, conv] of s.chat.conversations) {
+      if (conv.organization_id === activeOrgId) n++;
+    }
+    return n;
+  });
+
   const [isLoadingOlder, setIsLoadingOlder] = useState(false);
   const [hasMore, setHasMore] = useState(true);
+  /** Bumped after every load attempt so the fill effect can continue. */
+  const [loadGeneration, setLoadGeneration] = useState(0);
 
   const hasMoreRef = useRef(true);
   const loadingRef = useRef(false);
@@ -51,6 +76,7 @@ export function useConversationListScroll(
     loadingRef.current = false;
     setHasMore(true);
     setIsLoadingOlder(false);
+    setLoadGeneration(0);
   }, [activeOrgId]);
 
   /** @returns true when a page was merged into the store */
@@ -96,6 +122,7 @@ export function useConversationListScroll(
         setHasMore(false);
       }
 
+      setLoadGeneration((g) => g + 1);
       return true;
     } catch (err) {
       console.error(err);
@@ -108,37 +135,33 @@ export function useConversationListScroll(
     }
   }, [activeOrgId, enabled]);
 
-  const shouldFill = useCallback(() => {
+  const isNearBottomOrShort = useCallback(() => {
     const el = scrollerRef.current;
-    if (!el) return true; // not mounted yet — keep trying
+    if (!el) return true;
     const shortList = el.scrollHeight <= el.clientHeight + 1;
     const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
     return shortList || distanceFromBottom <= SCROLL_BOTTOM_THRESHOLD_PX;
   }, []);
 
-  // Keep paging while the visible (possibly filtered) list can't scroll, or
-  // the user is near the bottom. Unlike depending only on itemCount, this
-  // continues when a page adds conversations that don't match the filter.
+  const needsMoreForFilter = targetCount > 0 && itemCount < targetCount;
+
+  // Load one page whenever the active tab still needs rows, or the list is
+  // short / near the bottom. Depends on loadedConvCount so we continue after
+  // pages that only contain the *other* tab's conversations.
   useEffect(() => {
-    if (!enabled || !activeOrgId) return;
+    if (!enabled || !activeOrgId || !previewReady) return;
+    if (!hasMoreRef.current || loadingRef.current) return;
 
     let cancelled = false;
 
     const pump = async () => {
-      await new Promise<void>((resolve) =>
-        requestAnimationFrame(() => resolve()),
-      );
+      await waitFrame();
+      if (cancelled || !hasMoreRef.current) return;
 
-      while (!cancelled && hasMoreRef.current) {
-        if (!shouldFill()) break;
+      const shouldLoad = isNearBottomOrShort() || needsMoreForFilter;
+      if (!shouldLoad) return;
 
-        const loaded = await loadOlder();
-        if (!loaded) break;
-
-        await new Promise<void>((resolve) =>
-          requestAnimationFrame(() => resolve()),
-        );
-      }
+      await loadOlder();
     };
 
     void pump();
@@ -150,14 +173,26 @@ export function useConversationListScroll(
     enabled,
     fillKey,
     itemCount,
+    isNearBottomOrShort,
+    loadGeneration,
     loadOlder,
+    loadedConvCount,
+    needsMoreForFilter,
     previewReady,
-    shouldFill,
   ]);
 
   const onScroll = useCallback(() => {
-    if (shouldFill()) void loadOlder();
-  }, [loadOlder, shouldFill]);
+    if (!enabled || !hasMoreRef.current || loadingRef.current) return;
+    if (!isNearBottomOrShort()) return;
+    void loadOlder();
+  }, [enabled, isNearBottomOrShort, loadOlder]);
 
-  return { scrollerRef, isLoadingOlder, onScroll, hasMore };
+  return {
+    scrollerRef,
+    isLoadingOlder,
+    onScroll,
+    hasMore,
+    /** True while we still owe rows for the active filter's total */
+    isFillingFilter: hasMore && needsMoreForFilter,
+  };
 }

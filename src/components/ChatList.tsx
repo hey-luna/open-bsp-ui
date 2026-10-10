@@ -14,6 +14,7 @@ import {
 import { conversationMatchesSearch } from "@/utils/conversationSearch";
 import { TickContext } from "@/contexts/useTick";
 import { useLastIncomingHydration } from "@/hooks/useLastIncomingHydration";
+import { useWindowFilterCounts } from "@/hooks/useWindowFilterCounts";
 import Spinner from "./Spinner";
 
 export type ConvMetadata = {
@@ -127,14 +128,17 @@ const ChatList = () => {
   ]);
 
   const itemIds = items.map((a) => a.convId);
+  const windowCounts = useWindowFilterCounts();
 
-  const { scrollerRef, isLoadingOlder, onScroll, hasMore } =
+  const { scrollerRef, isLoadingOlder, onScroll, hasMore, isFillingFilter } =
     useConversationListScroll(itemIds.length, {
       enabled: !isSearching,
       fillKey: appliedFilter,
+      targetCount: windowCounts[appliedFilter],
     });
 
-  const showLoadingEmpty = !itemIds.length && (isLoadingOlder || hasMore);
+  const showLoadingEmpty =
+    !itemIds.length && (isLoadingOlder || hasMore || isFillingFilter);
 
   return (
     <div
@@ -147,7 +151,7 @@ const ChatList = () => {
           {itemIds.map((key) => (
             <ChatListItem key={key} itemId={key} />
           ))}
-          {isLoadingOlder && (
+          {(isLoadingOlder || isFillingFilter) && (
             <div className="flex justify-center py-2">
               <Spinner size={16} />
             </div>
