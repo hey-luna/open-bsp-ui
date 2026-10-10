@@ -27,7 +27,7 @@ import { useContactAddress } from "@/queries/useContactsAddresses";
 import { formatPhoneNumber, nameInitials } from "@/utils/FormatUtils";
 import { useNavigate } from "@tanstack/react-router";
 import { getDataMessageDisplay } from "@/utils/dataMessageDisplay";
-import { Filters } from "@/stores/uiSlice";
+import { isClosedFilter } from "@/stores/uiSlice";
 import { formatClosedDuration } from "@/utils/closedWindow";
 
 function mediaPreview(t: (content: string) => ReactNode, message?: MessageRow) {
@@ -164,8 +164,8 @@ export default function ChatListItem({ itemId }: { itemId: string }) {
   // Select a boolean so only the previously/newly active items re-render on
   // conversation switch (selecting the id string re-renders every list item).
   const active = useBoundStore((state) => state.ui.activeConvId === itemId);
-  const showClosedDuration = useBoundStore(
-    (state) => state.ui.filter === Filters.CLOSED_WINDOW,
+  const showClosedDuration = useBoundStore((state) =>
+    isClosedFilter(state.ui.filter),
   );
   const lastIncomingAt = useBoundStore((state) =>
     state.chat.lastIncomingAt.has(itemId)

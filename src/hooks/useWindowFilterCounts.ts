@@ -9,6 +9,7 @@ import { Filters } from "@/stores/uiSlice";
 
 const EMPTY: WindowFilterCounts = {
   [Filters.OPEN_WINDOW]: 0,
+  [Filters.RECENTLY_CLOSED]: 0,
   [Filters.CLOSED_WINDOW]: 0,
 };
 
