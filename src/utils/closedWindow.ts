@@ -1,5 +1,10 @@
 import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
+import "dayjs/locale/es";
+import "dayjs/locale/en";
+import "dayjs/locale/pt";
+import "dayjs/locale/fr";
+import "dayjs/locale/sw";
 
 dayjs.extend(relativeTime);
 
@@ -25,8 +30,8 @@ export function closedDurationMs(
 }
 
 /**
- * Human duration since the window closed, e.g. "2 days" / "3 hours"
- * (locale-aware via dayjs relativeTime).
+ * Relative time since the window closed, with locale suffix
+ * (e.g. English "3 days ago", Spanish "hace 3 días").
  */
 export function formatClosedDuration(
   lastIncomingAt: string | null | undefined,
@@ -35,5 +40,5 @@ export function formatClosedDuration(
 ): string | null {
   const closedAt = windowClosedAt(lastIncomingAt);
   if (!closedAt) return null;
-  return closedAt.locale(locale).to(now, true);
+  return closedAt.locale(locale).from(now.locale(locale));
 }

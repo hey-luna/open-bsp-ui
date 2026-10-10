@@ -351,7 +351,8 @@ export default function ChatListItem({ itemId }: { itemId: string }) {
       currentLanguage,
     );
     if (!duration) return t("Sin mensaje del contacto");
-    return `${t("Cerrada hace")} ${duration}`;
+    // es: "Cerrada hace 3 días" / en: "Closed 3 days ago"
+    return t("Cerrada {{time}}").replace("{{time}}", duration);
   })();
 
   return (

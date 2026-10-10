@@ -28,7 +28,7 @@ export default function ChatFilter() {
         <button
           key={filter}
           className={
-            "text-[14px] text-nowrap capitalize px-[12px] py-[6px] rounded-full" +
+            "text-[14px] text-nowrap px-[12px] py-[6px] rounded-full first-letter:uppercase" +
             (filter === appliedFilter
               ? " text-foreground bg-primary/10 hover:bg-primary/20 border border-primary"
               : " text-foreground bg-background hover:bg-accent border border-border")
@@ -43,7 +43,7 @@ export default function ChatFilter() {
       {showClosedSort && (
         <button
           type="button"
-          className="ml-auto text-[13px] text-nowrap flex items-center gap-1.5 px-[10px] py-[6px] rounded-full text-foreground bg-background hover:bg-accent border border-border"
+          className="ml-auto text-[13px] text-nowrap flex items-center gap-1.5 px-[10px] py-[6px] rounded-full text-foreground bg-background hover:bg-accent border border-border first-letter:uppercase"
           onClick={() => {
             setClosedListSort(
               closedListSort === ClosedListSort.RECENT

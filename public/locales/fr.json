@@ -59,7 +59,7 @@
   "caracteres": "caractères",
   "Cargando...": "Chargement...",
   "Categoría": "Catégorie",
-  "Cerrada hace": "Fermée depuis",
+  "Cerrada {{time}}": "Fermée {{time}}",
   "Cerrar": "Fermer",
   "Cerrar sesión": "Se déconnecter",
   "Cerrará en": "Se fermera dans",

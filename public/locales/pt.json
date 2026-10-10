@@ -59,7 +59,7 @@
   "caracteres": "caracteres",
   "Cargando...": "Carregando...",
   "Categoría": "Categoria",
-  "Cerrada hace": "Fechada há",
+  "Cerrada {{time}}": "Fechada {{time}}",
   "Cerrar": "Fechar",
   "Cerrar sesión": "Sair",
   "Cerrará en": "Encerrará em",
