@@ -1,7 +1,13 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import { type ChatSlice, createChatSlice } from "./chatSlice";
-import { type UISlice, createUISlice, Filters, filters } from "./uiSlice";
+import {
+  type UISlice,
+  createUISlice,
+  Filters,
+  filters,
+  ClosedListSort,
+} from "./uiSlice";
 import { loadTranslations } from "@/i18n/translations";
 
 export type AppState = {
@@ -46,6 +52,12 @@ const useBoundStore = create<AppState>()(
           if (!(state.ui.filter in filters)) {
             state.ui.filter = Filters.OPEN_WINDOW;
           }
+          if (
+            state.ui.closedListSort !== ClosedListSort.RECENT &&
+            state.ui.closedListSort !== ClosedListSort.LONGEST_CLOSED
+          ) {
+            state.ui.closedListSort = ClosedListSort.RECENT;
+          }
           if (state.ui.language && state.ui.language !== "es") {
             loadTranslations(state.ui.language);
           }
@@ -56,6 +68,7 @@ const useBoundStore = create<AppState>()(
         ui: {
           searchPattern: state.ui.searchPattern,
           filter: state.ui.filter,
+          closedListSort: state.ui.closedListSort,
           activeOrgId: state.ui.activeOrgId,
           language: state.ui.language,
           conversationAliases: state.ui.conversationAliases,

@@ -3,7 +3,7 @@ import useBoundStore from "@/stores/useBoundStore";
 import ChatListItem from "./ChatListItem";
 import { type ConversationRow, type MessageRow } from "@/supabase/client";
 import { timestampDescending } from "@/stores/chatSlice";
-import { filters, Filters } from "@/stores/uiSlice";
+import { ClosedListSort, filters, Filters } from "@/stores/uiSlice";
 import { useTranslation } from "@/hooks/useTranslation";
 import { useConversationListScroll } from "@/hooks/useConversationListScroll";
 import { useConversationSearch } from "@/hooks/useConversationSearch";
@@ -12,6 +12,7 @@ import {
   useConversationContactIndex,
 } from "@/hooks/useConversationContactIndex";
 import { conversationMatchesSearch } from "@/utils/conversationSearch";
+import { closedDurationMs } from "@/utils/closedWindow";
 import { TickContext } from "@/contexts/useTick";
 import { useLastIncomingHydration } from "@/hooks/useLastIncomingHydration";
 import { useWindowFilterCounts } from "@/hooks/useWindowFilterCounts";
@@ -48,6 +49,7 @@ const ChatList = () => {
   const lastIncomingAt = useBoundStore((state) => state.chat.lastIncomingAt);
   const filterName = useBoundStore((state) => state.ui.filter);
   const setFilterName = useBoundStore((state) => state.ui.setFilter);
+  const closedListSort = useBoundStore((state) => state.ui.closedListSort);
   const searchPattern = useBoundStore((state) => state.ui.searchPattern);
   const setSearchPattern = useBoundStore((state) => state.ui.setSearchPattern);
   const conversationAliases = useBoundStore(
@@ -103,6 +105,25 @@ const ChatList = () => {
           searchPattern,
         );
       });
+    } else if (
+      appliedFilter === Filters.CLOSED_WINDOW &&
+      closedListSort === ClosedListSort.LONGEST_CLOSED
+    ) {
+      next.sort((a, b) => {
+        const aClosed = closedDurationMs(
+          lastIncomingAt.has(a.convId)
+            ? lastIncomingAt.get(a.convId)
+            : undefined,
+          tick,
+        );
+        const bClosed = closedDurationMs(
+          lastIncomingAt.has(b.convId)
+            ? lastIncomingAt.get(b.convId)
+            : undefined,
+          tick,
+        );
+        return bClosed - aClosed || pinnedAscending(a.conv, b.conv);
+      });
     } else {
       next.sort(
         (a, b) =>
@@ -117,6 +138,7 @@ const ChatList = () => {
   }, [
     activeOrgId,
     appliedFilter,
+    closedListSort,
     contactIndex,
     conversationAliases,
     conversations,
