@@ -46,6 +46,15 @@ export const Filters = {
 
 export type Filters = (typeof Filters)[keyof typeof Filters];
 
+/** Sort mode used on the closed-window conversation tab. */
+export const ClosedListSort = {
+  RECENT: "recent",
+  LONGEST_CLOSED: "closed_longest",
+} as const;
+
+export type ClosedListSort =
+  (typeof ClosedListSort)[keyof typeof ClosedListSort];
+
 export const filters: {
   [key in Filters]: (
     conv: ConversationRow,
@@ -94,6 +103,8 @@ export type UIState = {
   user: User | null;
   sendAsContact: boolean;
   filter: keyof typeof filters;
+  /** Only applies while viewing the closed-window tab. */
+  closedListSort: ClosedListSort;
   searchPattern: string;
   isLoading: boolean;
   language: Language;
@@ -108,6 +119,7 @@ export type UIActions = {
   setUser: (user: User | null) => void;
   setSendAsContact: (sendAsContact: boolean) => void;
   setFilter: (filter: keyof typeof filters) => void;
+  setClosedListSort: (sort: ClosedListSort) => void;
   setSearchPattern: (searchPattern: string) => void;
   setTemplateDraft: (convId: string, draft: TemplateDraft | null) => void;
   setLanguage: (lang: Language) => void;
@@ -133,6 +145,7 @@ export const createUISlice: StateCreator<Partial<AppState>> = (
   user: null,
   sendAsContact: false,
   filter: Filters.OPEN_WINDOW as keyof typeof filters,
+  closedListSort: ClosedListSort.RECENT,
   searchPattern: "",
   isLoading: false,
   language: detectDefaultLanguage(),
@@ -177,6 +190,13 @@ export const createUISlice: StateCreator<Partial<AppState>> = (
       ui: {
         ...state.ui,
         filter,
+      },
+    })),
+  setClosedListSort: (closedListSort: ClosedListSort) =>
+    set((state) => ({
+      ui: {
+        ...state.ui,
+        closedListSort,
       },
     })),
   setSearchPattern: (searchPattern: string) =>
