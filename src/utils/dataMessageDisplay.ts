@@ -186,6 +186,30 @@ function componentParameters(components: unknown[], type: string): unknown[] {
   return component.parameters;
 }
 
+/**
+ * API inserts often use Meta's `components[]` shape; OpenBSP docs also show a
+ * flat `parameters[]` on `data` (see MIGRATING_FROM_TWILIO). Treat those as
+ * body variables when no component parameters are present.
+ */
+function templateParameterLists(data: Record<string, unknown>): {
+  headerParams: unknown[];
+  bodyParams: unknown[];
+} {
+  const components = Array.isArray(data.components) ? data.components : [];
+  const headerParams = componentParameters(components, "header");
+  let bodyParams = componentParameters(components, "body");
+
+  if (
+    !bodyParams.length &&
+    !headerParams.length &&
+    Array.isArray(data.parameters)
+  ) {
+    bodyParams = data.parameters;
+  }
+
+  return { headerParams, bodyParams };
+}
+
 function definitionComponent(
   definition: TemplateData,
   type: string,
@@ -218,58 +242,106 @@ function joinedParams(params: unknown[]): string | undefined {
   return values.length ? values.join("\n\n") : undefined;
 }
 
+/** True when `text` is only the template name or sent variable value(s). */
+function isOnlyParameterValues(
+  storedText: string,
+  templateName: string | undefined,
+  paramValues: string[],
+): boolean {
+  const trimmed = storedText.trim();
+  if (templateName && trimmed === templateName.trim()) {
+    return true;
+  }
+  if (!paramValues.length) {
+    return false;
+  }
+  const joined = paramValues.join("\n\n");
+  if (trimmed === joined) {
+    return true;
+  }
+  if (paramValues.length === 1 && trimmed === paramValues[0]) {
+    return true;
+  }
+  return paramValues.some((value) => value === trimmed);
+}
+
+function storedTemplateBody(
+  text: string | undefined,
+  templateName: string | undefined,
+  paramValues: string[],
+): string | undefined {
+  const storedText = str(text);
+  if (
+    !storedText ||
+    isOnlyParameterValues(storedText, templateName, paramValues)
+  ) {
+    return;
+  }
+  return storedText;
+}
+
+function buttonsFromDefinition(definition: TemplateData): string[] | undefined {
+  const butt = definitionComponent(definition, "BUTTONS");
+  const buttons = Array.isArray(butt?.buttons)
+    ? (butt.buttons as unknown[])
+        .map(buttonLabel)
+        .filter((label): label is string => !!label)
+    : undefined;
+  return buttons?.length ? buttons : undefined;
+}
+
 function templateDisplay(
   data: Record<string, unknown>,
   text: string | undefined,
   definition: TemplateData | undefined,
 ): DataMessageDisplay {
-  const components = Array.isArray(data.components) ? data.components : [];
-  const headerParams = componentParameters(components, "header");
-  const bodyParams = componentParameters(components, "body");
+  const { headerParams, bodyParams } = templateParameterLists(data);
   const paramValues = [
     ...headerParams.map(parameterText),
     ...bodyParams.map(parameterText),
   ].filter((value): value is string => !!value);
+  const templateName = str(data.name);
+  const storedBody = storedTemplateBody(text, templateName, paramValues);
 
   if (definition) {
     const head = definitionComponent(definition, "HEADER");
     const body = definitionComponent(definition, "BODY");
     const foot = definitionComponent(definition, "FOOTER");
-    const butt = definitionComponent(definition, "BUTTONS");
+    const buttons = buttonsFromDefinition(definition);
+
+    if (storedBody) {
+      return {
+        body: storedBody,
+        buttons,
+      };
+    }
 
     const header = str(head?.text)
       ? fillPlaceholders(head!.text as string, headerParams)
       : undefined;
-    const filledBody = str(body?.text)
-      ? fillPlaceholders(body!.text as string, bodyParams)
+    const bodyTemplate = str(body?.text);
+    const filledBody = bodyTemplate
+      ? fillPlaceholders(bodyTemplate, bodyParams)
       : undefined;
     const footer = str(foot?.text);
-    const buttons = Array.isArray(butt?.buttons)
-      ? (butt.buttons as unknown[])
-          .map(buttonLabel)
-          .filter((label): label is string => !!label)
-      : undefined;
 
-    if (filledBody || header) {
-      return {
-        header,
-        body: filledBody || joinedParams(bodyParams) || str(data.name) || "",
-        footer,
-        buttons: buttons?.length ? buttons : undefined,
-      };
-    }
-
-    if (buttons?.length) {
-      return {
-        body: str(text) || joinedParams(bodyParams) || str(data.name) || "",
-        buttons,
-        footer,
-      };
-    }
+    return {
+      header,
+      body:
+        filledBody ||
+        bodyTemplate ||
+        joinedParams(bodyParams) ||
+        templateName ||
+        "",
+      footer,
+      buttons,
+    };
   }
 
-  // Stored `text` is often just one variable (e.g. "4"). Prefer the full
-  // parameter list whenever `text` is clearly one of those values.
+  if (storedBody) {
+    return { body: storedBody };
+  }
+
   const storedText = str(text);
   const textIsJustAParam =
     !!storedText && paramValues.some((value) => value === storedText);
@@ -280,7 +352,7 @@ function templateDisplay(
       (!textIsJustAParam && storedText) ||
       joinedParams(bodyParams) ||
       storedText ||
-      str(data.name) ||
+      templateName ||
       "",
   };
 }

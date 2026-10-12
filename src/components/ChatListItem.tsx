@@ -26,7 +26,11 @@ import { useContactByAddress } from "@/queries/useContacts";
 import { useContactAddress } from "@/queries/useContactsAddresses";
 import { formatPhoneNumber, nameInitials } from "@/utils/FormatUtils";
 import { useNavigate } from "@tanstack/react-router";
-import { getDataMessageDisplay } from "@/utils/dataMessageDisplay";
+import {
+  getDataMessageDisplay,
+  isTemplateMessageContent,
+} from "@/utils/dataMessageDisplay";
+import { useTemplates } from "@/queries/useTemplates";
 import { isClosedFilter } from "@/stores/uiSlice";
 import { formatClosedDuration } from "@/utils/closedWindow";
 
@@ -178,6 +182,12 @@ export default function ChatListItem({ itemId }: { itemId: string }) {
   );
   const alias = useBoundStore((state) => state.ui.conversationAliases[itemId]);
 
+  const { data: templates } = useTemplates(
+    conversation?.service === "whatsapp"
+      ? conversation.organization_address
+      : undefined,
+  );
+
   const { data: contact } = useContactByAddress(
     conversation?.contact_address,
     conversation?.service,
@@ -236,6 +246,17 @@ export default function ChatListItem({ itemId }: { itemId: string }) {
           timestamp: draft!.timestamp,
           status: {},
         } as MessageRow);
+
+  const previewDataDisplay =
+    preview?.content.type === "data" &&
+    preview.content.kind !== "media_placeholder"
+      ? getDataMessageDisplay(preview.content, templates)
+      : undefined;
+
+  const showTemplateListLabel =
+    preview?.content.type === "data" &&
+    isTemplateMessageContent(preview.content) &&
+    !previewDataDisplay?.body?.trim();
 
   const unread = (() => {
     let count = 0;
@@ -435,17 +456,16 @@ export default function ChatListItem({ itemId }: { itemId: string }) {
                     {t("Borrador:")}
                   </div>
                 )}
-                {preview?.content.type === "data" &&
-                  preview?.content.kind === "template" && (
-                    <div className="text-[14px] text-primary mr-1">
-                      {t("Plantilla:")}
-                    </div>
-                  )}
+                {showTemplateListLabel && (
+                  <div className="text-[14px] text-primary mr-1">
+                    {t("Plantilla:")}
+                  </div>
+                )}
                 <div className="truncate text-[14px]">
                   {preview?.content.type === "text" && preview.content.text}
                   {preview?.content.type === "data" &&
                     preview.content.kind !== "media_placeholder" &&
-                    (getDataMessageDisplay(preview.content)?.body ||
+                    (previewDataDisplay?.body ||
                       preview.content.text ||
                       JSON.stringify(preview.content.data))}
                   {(preview?.content.type === "file" ||
