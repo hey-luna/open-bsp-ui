@@ -7,6 +7,7 @@ import {
   ClosedListSort,
   filters,
   Filters,
+  isArchived,
   isClosedFilter,
 } from "@/stores/uiSlice";
 import { useTranslation } from "@/hooks/useTranslation";
@@ -80,19 +81,23 @@ const ChatList = () => {
         alias: conversationAliases[convId],
         mostRecentMsg: getMostRecentMsg(convId),
       }))
-      .filter(
-        (a) =>
-          a.conv.organization_id === activeOrgId &&
-          filters[appliedFilter](
-            a.conv,
-            a.mostRecentMsg,
-            lastIncomingAt.has(a.convId)
-              ? lastIncomingAt.get(a.convId)
-              : undefined,
-            tick,
-          ) &&
-          !!a.mostRecentMsg,
-      );
+      .filter((a) => {
+        if (a.conv.organization_id !== activeOrgId || !a.mostRecentMsg) {
+          return false;
+        }
+        // Search spans every window tab; only archive status still applies.
+        if (isSearching) {
+          return !isArchived(a.conv, a.mostRecentMsg);
+        }
+        return filters[appliedFilter](
+          a.conv,
+          a.mostRecentMsg,
+          lastIncomingAt.has(a.convId)
+            ? lastIncomingAt.get(a.convId)
+            : undefined,
+          tick,
+        );
+      });
 
     if (isSearching) {
       next = next.filter((item) => {
@@ -110,6 +115,11 @@ const ChatList = () => {
           searchPattern,
         );
       });
+      next.sort(
+        (a, b) =>
+          pinnedAscending(a.conv, b.conv) ||
+          timestampDescending(a.mostRecentMsg, b.mostRecentMsg),
+      );
     } else if (
       isClosedFilter(appliedFilter) &&
       closedListSort === ClosedListSort.LONGEST_CLOSED
